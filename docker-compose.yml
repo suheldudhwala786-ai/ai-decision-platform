@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: civicai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://civicai:civicai123@postgres:5432/civicai
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ENVIRONMENT=production
+      - DEBUG=False
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - civicai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: civicai-postgres
+    environment:
+      - POSTGRES_USER=civicai
+      - POSTGRES_PASSWORD=civicai123
+      - POSTGRES_DB=civicai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - civicai-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U civicai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Frontend (optional, for development)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: civicai-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+      - VITE_GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - civicai-network
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+
+networks:
+  civicai-network:
+    driver: bridge
